@@ -4,6 +4,95 @@ from scipy.spatial import distance
 
 class EVRP:
     '''Implementaion of the electric vehicle routing'''
+    def totalDemandInRoute(self,route:list):
+        '''Find the total demand of the customers in that particular route'''
+        return np.sum([self.DEMAND[cust] for cust in route])
+    
+    def balancingApproach(self):
+        '''
+        Customers assigned in the last route are the non-clustered customers,
+        the are remanining customers so their geo locations are not close-set.
+        The customers on the last route will be less than other routes, even a single customer.
+        Use a Balanced Approach to ensure the distance of customers and increase the number of customers in the last route.
+        '''
+        #1. Randomly select a customer (customer A form the last route).
+        lastRoute=self.finalCluster[-1]
+        customerA=lastRoute[random.randint(0,len(lastRoute)-1)]
+
+        #2. Select in turn the customers from other routes such which is the closest to A.
+        # Find all the nearest distance from A
+        nearestA=self.nearestCustomers(customerA)
+        # Make sure that the node taken not from the lastRoute
+        nearestA=[customer for customer in nearestA if customer not in lastRoute] 
+
+        #3. The chosen customers must satisfy the 2 following conditions - 3a and 3b
+        print(f'lastRoute           : {lastRoute}')
+        print(f'customerA           : {customerA}')
+        print(f'nearest node from A : {nearestA}')
+        print(f'self.finalCluster        : {self.finalCluster}')
+
+        #Loop all nearest customers from A
+        currentLastRouteDemand=self.totalDemandInRoute(lastRoute)
+        print(f'CurrentLastRouteDemand : {currentLastRouteDemand}')
+        for cust in nearestA:
+            print('---------------------------------------------------')
+            print(f'Customer {cust}: {self.DEMAND[cust]}')
+            '''
+            (3a) Initial sum of the total capacity of the route and the capacity of the chosen the EV's 
+                maximal carrying capacity Pmax customers does not exceed. 
+            '''
+            if (self.DEMAND[cust]+currentLastRouteDemand<self.MAX_CAPACITY):
+                #The list of that particular cust route with the absence of that cust
+                nearestRouteToAList=[cluster for cluster in self.finalCluster if cust in cluster][0]
+                
+                #lastRouteNewCustList=last route + 1 new nearest customer
+                lastRouteExpandList=lastRoute+[cust]
+                afterRemoveCustRoute=[i for i in [cluster for cluster in self.finalCluster if cust in cluster][0] if i!=cust]
+                
+                #capacityRouteA=old last route - the clsuter of the nearest route to A 
+                capacityRouteA=abs(self.totalDemandInRoute(lastRoute)-self.totalDemandInRoute(nearestRouteToAList))
+                #capacityRouteB=expand last route (add with new nearest cust) - the clsuter of the nearest route to A (but exclude that cust)
+                capacityRouteB=abs(self.totalDemandInRoute(lastRouteExpandList)-self.totalDemandInRoute(afterRemoveCustRoute))
+                
+                print(f'CurrentLastRouteDemand : {currentLastRouteDemand}')
+                print(f'lastRouteExpandList    : {lastRouteExpandList}')
+                print(f'afterRemoveCustRoute   : {afterRemoveCustRoute}')
+                print(f'capacityRouteA         : {capacityRouteA}')
+                print(f'capacityRouteB         : {capacityRouteB}')
+                print('============')
+                print(f'{capacityRouteB<capacityRouteA}')
+                print('============\n')
+                
+                '''
+                (3b) Total capacity difference (delta) is less than before.
+                If the expand route capacity B (capacityRouteB) less than old route (capacityRouteA), 
+                then we'll expand the nearest cust to the last route, else remain it -> To make sure we'll get the min capacity diff
+                '''
+                if(capacityRouteB<capacityRouteA):
+                    #Update the currentLastRouteDemand
+                    currentLastRouteDemand+=self.DEMAND[cust]
+                    
+                    #Remove the cust from the current cluster and replace the latest cluster in the self.finalCluster
+                    for idx,cluster in enumerate(self.finalCluster):
+                        if cust in cluster:
+                            self.finalCluster[idx]=[i for i in cluster if i!=cust]
+                    
+                    #Expand last route
+                    lastRoute.append(cust)
+                    self.finalCluster[-1]=lastRoute
+                            
+                    print(f'self.finalCluster : {self.finalCluster}')
+        
+        return self.finalCluster
+            
+    def nearestCustomers(self,customer:int):
+        #Extract distance of depot+customers
+        sortCustIdxMatrix=np.argsort(self.distanceMatrix[customer-1][:self.NUM_OF_CUSTOMERS+1]) 
+        print(f'sortCustIdxMatrix : {sortCustIdxMatrix}')
+
+        #Exclude customer itself (distance=0) and depot, we can straight jump to second record
+        return [sortCustIdxMatrix[i]+1 for i in range(1,sortCustIdxMatrix.shape[0]) if sortCustIdxMatrix[i]!=0] 
+
 
     def clustering(self):
         '''Implement the nearest neighbor method for clustering such that the cluster centers are uniformly distributed
@@ -40,10 +129,9 @@ class EVRP:
         sortCustIdxMatrix=np.argsort(self.distanceMatrix[seedPoint-1][:self.NUM_OF_CUSTOMERS+1]) 
         print(f'sortCustIdxMatrix : {sortCustIdxMatrix}')
 
-        #Node used to keep track customerNode
-        #Exclude seedPoint itself (distance=0) and depot, we can straight jump to second record
-        availableCustNode=[sortCustIdxMatrix[i]+1 for i in range(1,sortCustIdxMatrix.shape[0]) if sortCustIdxMatrix[i]!=0] 
-                    
+        #Nearest distance from seedPoint, return list of customers based on the shortest distance
+        availableCustNode=self.nearestCustomers(seedPoint)
+        
         print(f'availableCustNode : {availableCustNode}')
         idx=0
         while(len(availableCustNode)>0):
@@ -94,6 +182,7 @@ class EVRP:
                         
         #Update the last currentCluster to finalCluster
         finalCluster.append(currentCluster) 
+        print(finalCluster)
         return finalCluster
     
     def euclidean_distance(self,node1:int,node2:int): 
@@ -184,18 +273,14 @@ class EVRP:
         print(f'DEMAND: {self.DEMAND}')
         print(f'distanceMatrix: {self.distanceMatrix}')
 
-        self.finalCluster=self.clustering()
-        print(self.finalCluster)
-
     def __init__(self):
         random.seed(42)
         filenames=['evrp-benchmark-set/E-n22-k4.evrp']
         self.read_problems(filenames[0])
+        self.finalCluster=self.clustering()
+        self.finalCluster=self.balancingApproach()
+        print(self.finalCluster)
 
-
-      
-
- 
 
 if __name__ == "__main__":       
     EVRP()
