@@ -69,7 +69,7 @@ class EVRP:
 
         ciOthers=[]
         # Find ci cluster
-        for idx,cluster in enumerate(balancedCluster):
+        for idx,cluster in enumerate(finalCluster):
             #Find ci's cluster
             if ci not in cluster:
                 print(cluster, ci not in cluster)

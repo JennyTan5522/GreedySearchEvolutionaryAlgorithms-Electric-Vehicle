@@ -105,18 +105,6 @@ class GA:
 
         return finalCluster
 
-
-    def rouletteWheelSelection(self,ranked_population):
-        #Sum of population fitness
-        sumPopulationFitness=np.sum([fitness[0] for fitness in ranked_population])
-        #Compute each chromosome's probability 
-        chromosome_prob=[fitness[0]/sumPopulationFitness for fitness in ranked_population]
-        #Making the prob for minimization prob
-        chromosome_prob=1-np.array(chromosome_prob)
-        chromosome_prob=chromosome_prob.tolist()
-        #Generate random r, if a current sum>r, then select that chromosome
-        return ranked_population[chromosome_prob.index(np.random.choice(chromosome_prob))][1]
-    
     def fitness(chromosome:list):
         '''
         Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n
@@ -135,45 +123,20 @@ class GA:
             5.5 Selection
         '''
         random.seed(42)
-
-        #Store the population's average fitness history
-        history={}
-
-        #var to save the best individual fitness value(shortest distance)
-        best_individual=(float('inf'),None)
-
         #Step 1: Initialiting first population
         self.population=[self.chromosome_init() for _ in range(self.POP_SIZE)]
 
         #Iterate through the max generation
         for iter in range(self.MAX_GENERATION):
-            #Step 2: Crossover
-            if random.uniform(0,1) <= CROSS_RATE:
-                pass
+            ranked_population=[] #stored as tuple (fitness,chromosome)
 
-            #Step 3: Mutation
-            if random.uniform(0,1) <= MUT_RATE:
-                pass
+            #Step 3: Evaluating chromosome
+            for chromosome in self.population:
+                ranked_population.append((self.fitness(chromosome),chromosome))
+            #Sort ascedingly
+            ranked_population.sort()
 
-            #Step 4: Roulette Selection
-
-        #     ranked_population=[] #stored as tuple (fitness,chromosome)
-
-        #     #Step 3: Evaluating chromosome
-        #     for chromosome in self.population:
-        #         ranked_population.append((self.fitness(chromosome),chromosome))
-            
-        #     #Sort based on ascending order
-        #     ranked_population.sort()
-
-        #     #Compare the current population's best individual with the current best individual
-        #     if(ranked_population[0][0] < best_individual[0]):
-        #         best_individual=ranked_population[0]
-
-        #     #Update history
-        #     history[iter]={'Avg':np.mean([ind[0] for ind in ranked_population]),'Best Individual':best_individual}
-
-            
+ 
 
 
        

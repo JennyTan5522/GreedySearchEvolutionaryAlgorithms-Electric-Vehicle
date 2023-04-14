@@ -76,10 +76,7 @@ class EVRP:
                 ciOthers.append(cluster)
 
         for idx,node in enumerate(ciOthers):
-            print('--------------------')
-            print(ciOthers[idx])
-            print(nearestCust[idx])
-            print(nearestCust[idx] in node)
+           \
             if nearestCust[idx] in node:
                 print(node,' true')
 

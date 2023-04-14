@@ -12,10 +12,10 @@ class EVRP:
         route[i]=temp
         return route
     
-    def plotRoute(self,route):
+    def plotRoute(self):
         x=[]
         y=[]
-        for cluster in route:
+        for cluster in self.finalCluster:
             for node in cluster:
                 x.append(self.NODE[node][0])
                 y.append(self.NODE[node][1])
@@ -57,32 +57,6 @@ class EVRP:
         distanceMatrix=self.compute_distances(matrix)
         return distanceMatrix 
     
-    def findChargingStation(self,balancedCluster:list):
-        '''Choose a random customer-ci and exchange with the customer-cj from 
-        different routes that has the shortest distance to the customer ci '''
-        #1. Choose a random customer(ci) 
-        ci=random.randint(2,self.NUM_OF_CUSTOMERS+1)
-        print(ci)
-        #2. Find the nearest customer(cj) from customer (ci)
-        nearestCust=self.nearestCustomers(ci)
-        print(nearestCust)
-
-        ciOthers=[]
-        # Find ci cluster
-        for idx,cluster in enumerate(balancedCluster):
-            #Find ci's cluster
-            if ci not in cluster:
-                print(cluster, ci not in cluster)
-                ciOthers.append(cluster)
-
-        for idx,node in enumerate(ciOthers):
-            print('--------------------')
-            print(ciOthers[idx])
-            print(nearestCust[idx])
-            print(nearestCust[idx] in node)
-            if nearestCust[idx] in node:
-                print(node,' true')
-
     def local2Opt(self,existingRoute:list):
         '''
         Step 3:
@@ -90,7 +64,7 @@ class EVRP:
         '''
         existingDistance=self.calculateTotalDistance(existingRoute)
         stop=False
-        #self.plotRoute(existingRoute)
+        self.plotRoute()
         while(stop==False):
             stop=True
             for i in range(len(existingRoute)):
@@ -111,10 +85,11 @@ class EVRP:
                         existingDistance=newRouteDistance
                         
                         stop=False
-        #self.plotRoute(existingRoute)
+        self.plotRoute()
         return existingRoute
 
-    def balancingApproach(self,initialCluster):
+
+    def balancingApproach(self):
         '''
         Step 2:
         Customers assigned in the last route are the non-clustered customers,
@@ -123,7 +98,7 @@ class EVRP:
         Use a Balanced Approach to ensure the distance of customers and increase the number of customers in the last route.
         '''
         #1. Randomly select a customer (customer A form the last route).
-        lastRoute=initialCluster[-1]
+        lastRoute=self.finalCluster[-1]
         customerA=lastRoute[random.randint(0,len(lastRoute)-1)]
 
         #2. Select in turn the customers from other routes such which is the closest to A.
@@ -142,11 +117,11 @@ class EVRP:
             '''
             if (self.DEMAND[cust]+currentLastRouteDemand<self.MAX_CAPACITY):
                 #The list of that particular cust route with the absence of that cust
-                nearestRouteToAList=[cluster for cluster in initialCluster if cust in cluster][0]
+                nearestRouteToAList=[cluster for cluster in self.finalCluster if cust in cluster][0]
                 
                 #lastRouteNewCustList=last route + 1 new nearest customer
                 lastRouteExpandList=lastRoute+[cust]
-                afterRemoveCustRoute=[i for i in [cluster for cluster in initialCluster if cust in cluster][0] if i!=cust]
+                afterRemoveCustRoute=[i for i in [cluster for cluster in self.finalCluster if cust in cluster][0] if i!=cust]
                 
                 #capacityRouteA=old last route - the clsuter of the nearest route to A 
                 capacityRouteA=abs(self.totalDemandInRoute(lastRoute)-self.totalDemandInRoute(nearestRouteToAList))
@@ -162,16 +137,16 @@ class EVRP:
                     currentLastRouteDemand+=self.DEMAND[cust]
                     
                     #Remove the cust from the current cluster and replace the latest cluster in the self.finalCluster
-                    for idx,cluster in enumerate(initialCluster):
+                    for idx,cluster in enumerate(self.finalCluster):
                         if cust in cluster:
-                            initialCluster[idx]=[i for i in cluster if i!=cust]
+                            self.finalCluster[idx]=[i for i in cluster if i!=cust]
                     
                     #Expand last route
                     lastRoute.append(cust)
-                    initialCluster[-1]=lastRoute
+                    self.finalCluster[-1]=lastRoute
                             
-        print(f'Step 2, balancing cluster: {initialCluster}') 
-        return initialCluster   
+        print(f'Step 2, balancing cluster: {self.finalCluster}') 
+        return self.finalCluster    
 
     def clustering(self):
         '''
@@ -317,8 +292,8 @@ class EVRP:
     def __init__(self):
         pass
         random.seed(42)
-        filenames=['evrp-benchmark-set/E-n22-k4.evrp']
-        self.read_problems(filenames[0],False)
+    #     filenames=['evrp-benchmark-set/E-n22-k4.evrp']
+    #     self.read_problems(filenames[0])
     #     self.finalCluster=self.clustering()
     #     self.finalCluster=self.balancingApproach()
     #     for i in range(len(self.finalCluster)-1):

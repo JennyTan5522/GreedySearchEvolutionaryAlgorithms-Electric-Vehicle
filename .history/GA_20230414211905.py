@@ -116,7 +116,6 @@ class GA:
         chromosome_prob=chromosome_prob.tolist()
         #Generate random r, if a current sum>r, then select that chromosome
         return ranked_population[chromosome_prob.index(np.random.choice(chromosome_prob))][1]
-    
     def fitness(chromosome:list):
         '''
         Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n

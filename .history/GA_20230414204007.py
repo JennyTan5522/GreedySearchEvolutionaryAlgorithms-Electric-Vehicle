@@ -1,5 +1,4 @@
 from EVRP import EVRP
-import numpy as np
 import random
 import copy
 
@@ -12,28 +11,16 @@ class GA:
         self.MUT_RATE=MUT_RATE
         self.evrp=evrp
 
-    def chromosome_init(self):
+    def initialization(self):
+        #TODO do I need to move 4.1,4.2 and 4.3 to this GA part
         '''Generating chromosomes based on 4.1 Clustering, 4.2 Balancing and 4.3 Local Search'''
-        #Step 1: Clustering
-        initialCluster=EVRP().clustering()
+        pass
 
-        #Step 2: Balancing
-        balancedCluster=EVRP().balancingApproach(initialCluster)
-
-        #Step 3: Local 2-opt search
-        for i in range(len(balancedCluster)-1):
-            balancedCluster[i]=EVRP().local2Opt(balancedCluster[i])
-        # print(EVRP.finalCluster)
-        print(f'Step 3, local 2-opt cluster: {balancedCluster}')
-
-        #Step 4: TODO
-        return balancedCluster
-
-    def crossover(parent1:list,parent2:list):
+    def crossover(parent1,parent2):
         #Make sure that sub1, and sub2 is not a empty list
         while(True):
             #1. Randomly select a customerA in the parent individuals
-            customerA=random.randint(2,EVRP().NUM_OF_CUSTOMERS) 
+            customerA=random.randint(2,NUM_OF_CUSTOMERS) 
 
             #2. Sub1 is a set of customers in the route that comtains customerA of parent1.
             #   Sub2 is a set of customers in the route that contains customerA
@@ -68,9 +55,9 @@ class GA:
                     
         return child1,child2
 
-    def mutation_hsm(finalCluster:list):
+    def mutation_hsm():
         #1. Choose a random customer, ci
-        ci=random.randint(2,EVRP().NUM_OF_CUSTOMERS) 
+        ci=random.randint(2,NUM_OF_CUSTOMERS) 
 
         #2. Find the nearest customer, cj from different routes that has the shortest distance to ci
         #2.1 Find different route cluster from ci
@@ -79,7 +66,7 @@ class GA:
         diffRouteFromci=[route for cluster in diffRouteFromci for route in cluster]
 
         #2.2 Select the nearest customer with cj that is from different route
-        nearest=EVRP().nearestCustomers(ci)
+        nearest=nearestCustomers(ci)
 
         for node in nearest:
             if node in diffRouteFromci:
@@ -105,24 +92,6 @@ class GA:
 
         return finalCluster
 
-
-    def rouletteWheelSelection(self,ranked_population):
-        #Sum of population fitness
-        sumPopulationFitness=np.sum([fitness[0] for fitness in ranked_population])
-        #Compute each chromosome's probability 
-        chromosome_prob=[fitness[0]/sumPopulationFitness for fitness in ranked_population]
-        #Making the prob for minimization prob
-        chromosome_prob=1-np.array(chromosome_prob)
-        chromosome_prob=chromosome_prob.tolist()
-        #Generate random r, if a current sum>r, then select that chromosome
-        return ranked_population[chromosome_prob.index(np.random.choice(chromosome_prob))][1]
-    
-    def fitness(chromosome:list):
-        '''
-        Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n
-        '''
-        return np.sum([EVRP().calculateTotalDistance(cluster) for cluster in chromosome])
-
     def newGeneration(self):
         ''''
         - Read file  
@@ -135,48 +104,18 @@ class GA:
             5.5 Selection
         '''
         random.seed(42)
-
-        #Store the population's average fitness history
-        history={}
-
-        #var to save the best individual fitness value(shortest distance)
-        best_individual=(float('inf'),None)
-
-        #Step 1: Initialiting first population
-        self.population=[self.chromosome_init() for _ in range(self.POP_SIZE)]
-
-        #Iterate through the max generation
-        for iter in range(self.MAX_GENERATION):
-            #Step 2: Crossover
-            if random.uniform(0,1) <= CROSS_RATE:
-                pass
-
-            #Step 3: Mutation
-            if random.uniform(0,1) <= MUT_RATE:
-                pass
-
-            #Step 4: Roulette Selection
-
-        #     ranked_population=[] #stored as tuple (fitness,chromosome)
-
-        #     #Step 3: Evaluating chromosome
-        #     for chromosome in self.population:
-        #         ranked_population.append((self.fitness(chromosome),chromosome))
-            
-        #     #Sort based on ascending order
-        #     ranked_population.sort()
-
-        #     #Compare the current population's best individual with the current best individual
-        #     if(ranked_population[0][0] < best_individual[0]):
-        #         best_individual=ranked_population[0]
-
-        #     #Update history
-        #     history[iter]={'Avg':np.mean([ind[0] for ind in ranked_population]),'Best Individual':best_individual}
-
-            
-
-
+        filenames=['evrp-benchmark-set/E-n22-k4.evrp']
+        EVRP().read_problems(filenames[0],display=False)
+        
+        initialCluster=EVRP().clustering()
+        balancedCluster=EVRP().balancingApproach(initialCluster)
+        for i in range(len(EVRP.finalCluster)-1):
+            EVRP.finalCluster[i]=EVRP.local2Opt(EVRP.finalCluster[i])
+        # print(EVRP.finalCluster)
+        # print(f'Step 3, local 2-opt cluster: {EVRP.finalCluster}') 
        
+        pass
+
 
 if __name__=='__main__':
     evrp=EVRP()

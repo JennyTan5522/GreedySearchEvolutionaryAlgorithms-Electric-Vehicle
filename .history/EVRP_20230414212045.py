@@ -57,19 +57,19 @@ class EVRP:
         distanceMatrix=self.compute_distances(matrix)
         return distanceMatrix 
     
-    def findChargingStation(self,balancedCluster:list):
+    def findChargingStation(self):
         '''Choose a random customer-ci and exchange with the customer-cj from 
         different routes that has the shortest distance to the customer ci '''
         #1. Choose a random customer(ci) 
-        ci=random.randint(2,self.NUM_OF_CUSTOMERS+1)
+        ci=random.randint(2,NUM_OF_CUSTOMERS+1)
         print(ci)
         #2. Find the nearest customer(cj) from customer (ci)
-        nearestCust=self.nearestCustomers(ci)
+        nearestCust=nearestCustomers(ci)
         print(nearestCust)
 
         ciOthers=[]
         # Find ci cluster
-        for idx,cluster in enumerate(balancedCluster):
+        for idx,cluster in enumerate(finalCluster):
             #Find ci's cluster
             if ci not in cluster:
                 print(cluster, ci not in cluster)
