@@ -6,10 +6,14 @@ import matplotlib.pyplot as plt
 class EVRP:
     '''Implementaion of the electric vehicle routing'''
 
+    def __init__(self,filename,display:bool,random_state=42):
+        random.seed(random_state)
+        self.read_problems(filename)
+        if display:
+            self.displayParam()
+
     def swap(self,route,i,j):
-        temp=route[j]
-        route[j]=route[i] 
-        route[i]=temp
+        route[i],route[j]=route[j],route[i]
         return route
     
     def plotRoute(self,route):
@@ -38,9 +42,7 @@ class EVRP:
     
     def euclidean_distance(self,node1:int,node2:int): 
         '''Compute and return the euclidean distance of 2 coordinates'''
-        coor1=(self.NODE[node1][0],self.NODE[node1][1]) #(x,y)
-        coor2=(self.NODE[node2][0],self.NODE[node2][1])
-        return distance.euclidean(coor1,coor2)
+        return distance.euclidean(self.NODE[node1],self.NODE[node2])
     
     def compute_distances(self,matrix):
         '''Compute the distance matrix of the problem instance'''
@@ -57,31 +59,60 @@ class EVRP:
         distanceMatrix=self.compute_distances(matrix)
         return distanceMatrix 
     
+    def nearestChargingStations(self,customer:int):
+        #Extract distance of depot+customers
+        sortCustIdxMatrix=np.argsort(self.distanceMatrix[customer-1][self.NUM_OF_CUSTOMERS+1:]) 
+        print(f'sortCustIdxMatrix : {sortCustIdxMatrix}')
+        return np.array(list(range(23,31)))[sortCustIdxMatrix] #TODO -> change 23,31
+
     def findChargingStation(self,balancedCluster:list):
         '''Choose a random customer-ci and exchange with the customer-cj from 
         different routes that has the shortest distance to the customer ci '''
-        #1. Choose a random customer(ci) 
-        ci=random.randint(2,self.NUM_OF_CUSTOMERS+1)
-        print(ci)
-        #2. Find the nearest customer(cj) from customer (ci)
-        nearestCust=self.nearestCustomers(ci)
-        print(nearestCust)
 
-        ciOthers=[]
-        # Find ci cluster
-        for idx,cluster in enumerate(balancedCluster):
-            #Find ci's cluster
-            if ci not in cluster:
-                print(cluster, ci not in cluster)
-                ciOthers.append(cluster)
+        #Add depot(NODE=1) infront and behind of every cluster
+        for cluster in balancedCluster:
+            cluster.insert(0,1)
+            cluster.insert(len(cluster),1)
 
-        for idx,node in enumerate(ciOthers):
-            print('--------------------')
-            print(ciOthers[idx])
-            print(nearestCust[idx])
-            print(nearestCust[idx] in node)
-            if nearestCust[idx] in node:
-                print(node,' true')
+        currentBatteryLevel=self.BATTERY_CAPACITY
+        
+        for idx,route in enumerate(balancedCluster):
+            #Start from second
+            finalRoute=route[0:1]
+            for cust in route[1:]:
+                #Check whether battery capacity enough
+                batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
+                if batteryConsumption < currentBatteryLevel:
+                    #Update current battery level
+                    currentBatteryLevel-=batteryConsumption
+                    finalRoute.append(cust)
+                else:
+                    #if not enough
+                    while(True):
+                        '''
+                        Based on all the available charging stations until customer
+                        - Sort charging stations distance with current customer distance (From far to nearest-> reversed)
+                        '''
+                        stations=list(reversed(list(self.nearestChargingStations(cust))))
+                        print(stations)
+                        for idx,s in enumerate(stations):
+                            batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
+                            if batteryConsumption<currentBatteryLevel:
+                                stations=stations[idx:]
+                                break
+                        else:
+                            stations=[]
+                            
+                        if len(stations)>0:
+                            finalRoute=finalRoute+stations+[cust]
+                            #Last charging station and the next customer
+                            batteryConsumption=self.distanceMatrix[stations[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
+                            currentBatteryLevel=self.BATTERY_CAPACITY-batteryConsumption
+                            break
+                        else:
+                            pass
+                balancedCluster[idx]=finalRoute    
+        return balancedCluster
 
     def local2Opt(self,existingRoute:list):
         '''
@@ -170,7 +201,7 @@ class EVRP:
                     lastRoute.append(cust)
                     initialCluster[-1]=lastRoute
                             
-        print(f'Step 2, balancing cluster: {initialCluster}') 
+        # print(f'Step 2, balancing cluster: {initialCluster}') 
         return initialCluster   
 
     def clustering(self):
@@ -235,10 +266,10 @@ class EVRP:
                         
         #Update the last currentCluster to finalCluster
         finalCluster.append(currentCluster) 
-        print(f'Step 1, clustering cluster: {finalCluster}')
+        #print(f'Step 1, clustering cluster: {finalCluster}')
         return finalCluster
 
-    def read_problems(self,filename:str,display:bool):
+    def read_problems(self,filename):
         '''Read the problem instance and generate the initial object vector'''
         with open(filename,'r') as f:
             data=f.read().splitlines()  
@@ -292,33 +323,24 @@ class EVRP:
                 idx+=1
                 for i in range(self.ACTUAL_PROBLEM_SIZE-self.PROBLEM_SIZE):
                     self.STATIONS_COORD_SECTION.append(int(data[idx+i].strip()))
-                     
+                    
         #Generate distance matrix
         self.distanceMatrix=self.generate_2D_distance_matrix()
 
-        self.displayParam(display)
-    
-    def displayParam(self,display:bool):
-        if display==True:
-            print(f'OPTIMAL_VALUE          : {self.OPTIMUM}')
-            print(f'MIN_VEHICLES           : {self.MIN_VEHICLES}')
-            print(f'PROBLEM_SIZE           : {self.PROBLEM_SIZE}')
-            print(f'NUM_OF_STATIONS        : {self.NUM_OF_STATIONS}')
-            print(f'MAX_CAPACITY           : {self.MAX_CAPACITY}')
-            print(f'BATTERY_CAPACITY       : {self.BATTERY_CAPACITY}')
-            print(f'ENERGY_CONSUMPTION     : {self.ENERGY_CONSUMPTION}')
-            print(f'NUM_OF_CUSTOMERS       : {self.NUM_OF_CUSTOMERS}')
-            print(f'ACTUAL_PROBLEM_SIZE    : {self.ACTUAL_PROBLEM_SIZE}')
-            print(f'NODE                   : {self.NODE}')
-            print(f'DEMAND                 : {self.DEMAND}')
-            print(f'STATIONS_COORD_SECTION : {self.STATIONS_COORD_SECTION}')
+    def displayParam(self):
+        print(f'OPTIMAL_VALUE          : {self.OPTIMUM}')
+        print(f'MIN_VEHICLES           : {self.MIN_VEHICLES}')
+        print(f'PROBLEM_SIZE           : {self.PROBLEM_SIZE}')
+        print(f'NUM_OF_STATIONS        : {self.NUM_OF_STATIONS}')
+        print(f'MAX_CAPACITY           : {self.MAX_CAPACITY}')
+        print(f'BATTERY_CAPACITY       : {self.BATTERY_CAPACITY}')
+        print(f'ENERGY_CONSUMPTION     : {self.ENERGY_CONSUMPTION}')
+        print(f'NUM_OF_CUSTOMERS       : {self.NUM_OF_CUSTOMERS}')
+        print(f'ACTUAL_PROBLEM_SIZE    : {self.ACTUAL_PROBLEM_SIZE}')
+        print(f'NODE                   : {self.NODE}')
+        print(f'DEMAND                 : {self.DEMAND}')
+        print(f'STATIONS_COORD_SECTION : {self.STATIONS_COORD_SECTION}')
 
-
-    def __init__(self):
-        pass
-        random.seed(42)
-        filenames=['evrp-benchmark-set/E-n22-k4.evrp']
-        self.read_problems(filenames[0],False)
     #     self.finalCluster=self.clustering()
     #     self.finalCluster=self.balancingApproach()
     #     for i in range(len(self.finalCluster)-1):
