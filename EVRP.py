@@ -71,7 +71,6 @@ class EVRP:
         balancedClusterComplete = copy.deepcopy(balancedCluster)
         
         for route in balancedClusterComplete:
-            
             # add depot to front and end
             route.insert(0,1)
             route.insert(len(route),1)
@@ -141,7 +140,6 @@ class EVRP:
                     
             # print("finish insert: ", finalRoute)
             completeRoute.append(finalRoute)
-            
         return completeRoute
                             
     
