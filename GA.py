@@ -3,13 +3,14 @@ import numpy as np
 import random
 import copy
 import itertools
+import time
 
 class GA:
     def __init__(self,POP_SIZE,CROSS_RATE,MUT_RATE,filename,display,random_state=42):
         random.seed(random_state)
         self.evrp=EVRP(filename,display,random_state=random_state)
-        # self.MAX_GENERATION=25000*self.evrp.ACTUAL_PROBLEM_SIZE
-        self.MAX_GENERATION=10
+        self.MAX_GENERATION=5#25000*self.evrp.ACTUAL_PROBLEM_SIZE
+        #self.MAX_GENERATION=5
         self.POP_SIZE=POP_SIZE
         self.CROSS_RATE=CROSS_RATE
         self.MUT_RATE=MUT_RATE
@@ -18,54 +19,61 @@ class GA:
         '''Generating chromosomes based on 4.1 Clustering, 4.2 Balancing and 4.3 Local Search'''
         #Step 1: Clustering
         initialCluster=self.evrp.clustering()
+        #print('Initial :',initialCluster)
 
         #Step 2: Balancing
         balancedCluster=self.evrp.balancingApproach(initialCluster)
+        #print('Balanced cluster: ',balancedCluster)
 
         #Step 3: Local 2-opt search
         for i in range(len(balancedCluster)-1):
             balancedCluster[i]=self.evrp.local2Opt(balancedCluster[i])
+        #print('2-opt cluster: ',balancedCluster)
 
         return balancedCluster
 
     def crossover(self,parent1:list,parent2:list):
-        #Make sure that sub1, and sub2 is not a empty list
-        while(True):
-            #1. Randomly select a customerA in the parent individuals
-            customerA=random.randint(2,self.evrp.NUM_OF_CUSTOMERS) 
+        
+        if parent1 == parent2:
+            return parent1, parent2
+        else:
+            #Make sure that sub1, and sub2 is not a empty list
+            while(True):
+                #1. Randomly select a customerA in the parent individuals
+                customerA=random.randint(2,self.evrp.NUM_OF_CUSTOMERS) 
 
-            #2. Sub1 is a set of customers in the route that comtains customerA of parent1.
-            #   Sub2 is a set of customers in the route that contains customerA
-            sub1=[subroute for subroute in parent1 if customerA in subroute][0]
-            sub2=[subroute for subroute in parent2 if customerA in subroute][0]
-            sub2=[s for s in sub2 if s not in sub1]
-            
-            if (sub1==[] or sub2==[]):
-                continue
-            else:
-                break
+                #2. Sub1 is a set of customers in the route that comtains customerA of parent1.
+                #   Sub2 is a set of customers in the route that contains customerA
+                sub1=[subroute for subroute in parent1 if customerA in subroute][0]
+                sub2=[subroute for subroute in parent2 if customerA in subroute][0]
+                sub2=[s for s in sub2 if s not in sub1]
+                
+                if (sub1==[] or sub2==[]):
+                    continue
+                else:
+                    break
 
-        #4.1 Create child1=concatenate(sub2,sub1)
-        concat1=sub2.copy() + sub1.copy()
-        count=0
-        child1=copy.deepcopy(parent1)
-        for i,route in enumerate(parent1):
-            for j,gene in enumerate(route):
-                if gene in sub1 or gene in sub2:
-                    child1[i][j]=concat1[count]
-                    count+=1
+            #4.1 Create child1=concatenate(sub2,sub1)
+            concat1=sub2.copy() + sub1.copy()
+            count=0
+            child1=copy.deepcopy(parent1)
+            for i,route in enumerate(parent1):
+                for j,gene in enumerate(route):
+                    if gene in sub1 or gene in sub2:
+                        child1[i][j]=concat1[count]
+                        count+=1
 
-        #4.2 Create child2=concatenate(reverse(sub1),reverse(sub2))
-        concat2=sub1[::-1]+sub2[::-1]
-        count=0
-        child2=copy.deepcopy(parent2)
-        for i,route in enumerate(parent2):
-            for j,gene in enumerate(route):
-                if gene in sub1 or gene in sub2:
-                    child2[i][j]=concat2[count]
-                    count+=1
-                    
-        return child1,child2
+            #4.2 Create child2=concatenate(reverse(sub1),reverse(sub2))
+            concat2=sub1[::-1]+sub2[::-1]
+            count=0
+            child2=copy.deepcopy(parent2)
+            for i,route in enumerate(parent2):
+                for j,gene in enumerate(route):
+                    if gene in sub1 or gene in sub2:
+                        child2[i][j]=concat2[count]
+                        count+=1
+                        
+            return child1,child2
 
     def mutation_hsm(self,finalCluster:list):
         #1. Choose a random customer, ci
@@ -120,9 +128,19 @@ class GA:
         #Count probability
         probability=[f/sum(cumulated_normalized_fitness) for f in cumulated_normalized_fitness]
         #Find min prob
-        probability=1-np.array(probability)
+        # probability=1-np.array(probability)
+        cumulated_probability=itertools.accumulate(probability)
+        cumulated_probability=[a for a in cumulated_probability]
+        # print("probability", probability)
         #Choose chromosome based on population size, choose chromosome based on probability
-        return np.random.choice([chromosome[1] for chromosome in ranked_population],size=self.POP_SIZE,p=probability)
+        new_population = []
+        old_population = [chromosome[1] for chromosome in ranked_population]
+        for chromosome, p in zip(old_population, cumulated_probability):
+            if random.uniform(0,1) <= p:
+                new_population.append(chromosome)
+        
+        return new_population
+        # return np.random.choice([chromosome[1] for chromosome in ranked_population],size=self.POP_SIZE,p=probability)
     
     #Before fitness need to check validity -> Battery and capacity, if invalid, return false, no need count fitness (inf)
     def checkCapacity(self,chromosome:list):#Chromosome already include charging stations
@@ -161,19 +179,8 @@ class GA:
         Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n
         '''
         return np.sum([self.evrp.calculateTotalDistance(cluster) for cluster in chromosome])
-
+        
     def newGeneration(self):
-        ''''
-        - Read file  
-        - Generation population (200)
-            5.2 Initialization
-            - Clustering -> Balancing -> Local search 
-            - Output=1 final cluster (=1 chromosome) -> Append chromosome into my population
-            5.3 Crossover operator   
-            5.4 Mutation
-            Before selection then do fitness, selection based on fitness value
-            5.5 Selection
-        '''
         #Store the population's average fitness history
         history={}
 
@@ -185,23 +192,25 @@ class GA:
 
         #Iterate through the max generation
         for iter in range(self.MAX_GENERATION):
-            #Step 2: Crossover
-            #For every single chromosome then see whether need do crossover
-            children=[]
-            for parent1 in self.population:
-                if random.uniform(0,1) <= self.CROSS_RATE:
-                    #Choose another partner for crossover
-                    parent2=random.choice(self.population)
-                    child1,child2=self.crossover(parent1,parent2)
-                    children.append(child1)
-                    children.append(child2)
-
+            
+            print(f"Iteration  : {iter}")
+            print(f'Best Ind   :',best_individual[0])
+            print(f'Population :',self.population)
+            # if (iter>0):
+            #     #Perform Local 2-opt search on population
+            #     for j,solution in enumerate(self.population):
+            #         for k,cluster in enumerate(solution):
+            #             self.population[j][k]=self.evrp.local2Opt(self.population[j][k])
+                        #print(self.population[j][k])
+            print('HELLO')
+            print(self.population)
             #Step 3: Mutation -> Original population and children
-            self.population=self.population+children
+            #self.population=self.population+children
             for idx,chromosome in enumerate(self.population):
+                #print('Chromosome: ',chromosome)
                 if random.uniform(0,1) <= self.MUT_RATE:
                     self.population[idx]=self.mutation_hsm(chromosome)
-            
+            print('Mutation: ',self.population)
             #Step 4: Roulette Selection
             '''Evaluate for every chromosome 
             -> Insert charging stations -> Check validity -> If no valid(inf); else return total distance(include depot+charging stations), 
@@ -218,36 +227,134 @@ class GA:
                         chromosome_fitness=self.fitness(chromosomeComplete)
                         #Append into ranked_pop
                         ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
-                #     #If battery not valid
-                #     else:
-                #         ranked_population.append((float('inf'),chromosome,chromosomeComplete))
-
-                # else:
-                #     ranked_population.append((float('inf'),chromosome,chromosome))#ori chromosome, ori chromosome
-        
+            
             #Sort based on the shortest distance    
             ranked_population.sort()
+            print('==------------------------------------==')
+            
+            print("Rank pop: ", ranked_population)
             self.population=self.rouletteWheelSelection(ranked_population)
-
+            print(self.population)
+            
             #Compare the current population's best individual with the current best individual
             if(ranked_population[0][0] < best_individual[0]):
                 best_individual=ranked_population[0]
 
             #Update history
             history[iter]={'Avg':np.mean([ind[0] for ind in ranked_population]),'Best Individual':best_individual}
-
+        
         return best_individual,history
+
+# ''''
+#     def newGeneration(self):
+        
+#         - Read file  
+#         - Generation population (200)
+#             5.2 Initialization
+#             - Clustering -> Balancing -> Local search 
+#             - Output=1 final cluster (=1 chromosome) -> Append chromosome into my population
+#             5.3 Crossover operator   
+#             5.4 Mutation
+#             Before selection then do fitness, selection based on fitness value
+#             5.5 Selection
+    
+#         #Store the population's average fitness history
+#         history={}
+
+#         #var to save the best individual fitness value(shortest distance)
+#         best_individual=(float('inf'),None,None)
+
+#         #Step 1: Initialiting first population
+#         self.population=[self.chromosome_init() for _ in range(self.POP_SIZE)]
+
+#         #Iterate through the max generation
+#         for iter in range(self.MAX_GENERATION):
+#             print(f"Iteration: {iter}")
             
+#             if iter>0:
+#                 for i in range(len(self.population)-1):
+#                     self.population[i]=self.evrp.local2Opt(self.population[i])
+                    
+#             #Step 2: Crossover
+#             #For every single chromosome then see whether need do crossover
+#             # children=[]
+#             # for parent1 in self.population:
+#             #     if random.uniform(0,1) <= self.CROSS_RATE:
+#             #         #Choose another partner for crossover
+#             #         print("Performing CX")
+#             #         parent2=random.choice(self.population)
+#             #         print(parent1, parent2)
+#             #         child1,child2=self.crossover(parent1,parent2)
+#             #         children.append(child1)
+#             #         children.append(child2)
+#             #         print("CX done")
+
+#             #Step 3: Mutation -> Original population and children
+#             #self.population=self.population+children
+#             print('Population :',self.population)
+#             for idx,chromosome in enumerate(self.population):
+#                 if random.uniform(0,1) <= self.MUT_RATE:
+#                     self.population[idx]=self.mutation_hsm(chromosome)
+            
+#             #Step 4: Roulette Selection
+#             '''Evaluate for every chromosome 
+#             -> Insert charging stations -> Check validity -> If no valid(inf); else return total distance(include depot+charging stations), 
+#             but return chromosome (not include depot+charging stations)'''
+#             ranked_population=[] #stored as tuple (fitness,chromosome(original),chromosome(charging stations+depot))
+#             for idx,chromosome in enumerate(self.population):
+#                 #Check capacity demand and battery level
+#                 if (self.checkCapacity(chromosome)):
+#                     #If capacity true then insert charging stations
+#                     chromosomeComplete=self.evrp.findChargingStation(chromosome)
+#                     #Check battery
+#                     if self.checkBattery(chromosomeComplete):
+#                         #Evaluate fitness
+#                         chromosome_fitness=self.fitness(chromosomeComplete)
+#                         #Append into ranked_pop
+#                         ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
+#                 #     #If battery not valid
+#                 #     else:
+#                 #         ranked_population.append((float('inf'),chromosome,chromosomeComplete))
+
+#                 # else:
+#                 #     ranked_population.append((float('inf'),chromosome,chromosome))#ori chromosome, ori chromosome
+        
+#             #Sort based on the shortest distance    
+#             ranked_population.sort()
+#             print('\n\n---------------------------------------')
+#             print("Rank pop: ", ranked_population)
+#             self.population=self.rouletteWheelSelection(ranked_population)
+#             print("After selection: ", self.population)
+#             #Compare the current population's best individual with the current best individual
+#             if(ranked_population[0][0] < best_individual[0]):
+#                 best_individual=ranked_population[0]
+
+#             #Update history
+#             history[iter]={'Avg':np.mean([ind[0] for ind in ranked_population]),'Best Individual':best_individual}
+#             print('======================')
+#             print('history: ',history)
+        
+#         return best_individual,history
+# '''           
 
 
-       
+  
 
 if __name__=='__main__':
-    MAX_GENERATION=25000
-    POP_SIZE=10 #POP_SIZE=200
+    #MAX_GENERATION=25000
+    POP_SIZE=3 #POP_SIZE=200
     CROSS_RATE=0.95
     MUT_RATE=0.1
     #POP_SIZE,CROSS_RATE,MUT_RATE,filename,display,random_state=42):
-    ga=GA(POP_SIZE,CROSS_RATE,MUT_RATE,'evrp-benchmark-set/E-n22-k4.evrp',display=True,random_state=42)
+    start=time.time()
+    ga=GA(POP_SIZE,CROSS_RATE,MUT_RATE,'evrp-benchmark-set/E-n22-k4.evrp',display=False,random_state=42)
     best_individual,history=ga.newGeneration()
+    end=time.time()
+    print('\n***SOLUTION***')
+    print('>> Best Individual :',best_individual)
+    print(f'>> Solution time   :{end-start:.2f}')
+    #print('\n>> History :',history)
     print(history)
+    with open('history_k14.txt','w') as f:
+        for i in range(len(history)-1):
+            f.write('Iter '+str(i)+' '+str(history[i])+'\n')

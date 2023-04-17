@@ -1,3 +1,4 @@
+import copy
 import random
 import numpy as np
 from scipy.spatial import distance
@@ -62,9 +63,89 @@ class EVRP:
     def nearestChargingStations(self,customer:int):
         #Extract distance of depot+customers
         sortCustIdxMatrix=np.argsort(self.distanceMatrix[customer-1][self.NUM_OF_CUSTOMERS+1:]) 
-        print(f'sortCustIdxMatrix : {sortCustIdxMatrix}')
+        # print(f'sortCustIdxMatrix : {sortCustIdxMatrix}')
         return np.array(list(range(23,31)))[sortCustIdxMatrix] #TODO -> change 23,31
 
+    def findChargingStation(self, balancedCluster:list):
+        completeRoute = []
+        balancedClusterComplete = copy.deepcopy(balancedCluster)
+        
+        for route in balancedClusterComplete:
+            
+            # add depot to front and end
+            route.insert(0,1)
+            route.insert(len(route),1)
+            
+            idx = 0
+            finalRoute = []
+            batteryLvlAtEachStation = []
+            forceToInsert = False
+            
+            # print(route)
+            
+            while (idx<len(route)):
+                
+                # print(f"Final route: {finalRoute}; Battery: {batteryLvlAtEachStation}; CurrentIdx: {idx}")
+                
+                if idx == 0:  # At start, battery lvl is max
+                    currentBatteryLvl = self.BATTERY_CAPACITY
+                    finalRoute.append(route[idx])
+                    batteryLvlAtEachStation.append(currentBatteryLvl)
+                    idx+=1 # go to nxt station
+                elif (idx >= 0):
+                    # calc battery consumption from prev to curr station
+                    batteryConsumption = self.distanceMatrix[finalRoute[-1]-1][route[idx]-1]*self.ENERGY_CONSUMPTION
+                    
+                    if (batteryConsumption < currentBatteryLvl) and (not forceToInsert):  # enuf battery to reach and forceToInsert = False
+                        currentBatteryLvl = batteryLvlAtEachStation[-1] - batteryConsumption
+                        finalRoute.append(route[idx])
+                        batteryLvlAtEachStation.append(currentBatteryLvl)
+                        idx+=1 # go to nxt station
+                        
+                    else:   # not enuf to reach
+                        
+                        # find available charging stations
+                        # print(f"Finding charging station between {finalRoute[-1]} and {route[idx]}.")
+                        # us = input("")
+                        stations=list(reversed(list(self.nearestChargingStations(route[idx]))))
+                        
+                        for i, s in enumerate(stations):
+                            batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
+                            if batteryConsumption < currentBatteryLvl:
+                                stations=stations[i:]
+                                break
+                        else:  # no available station
+                            stations = []
+                        
+                        if len(stations) > 0:  # station found
+                            
+                            finalRoute=finalRoute+stations
+                            for _ in range(len(stations)):
+                                batteryLvlAtEachStation.append(self.BATTERY_CAPACITY)
+                            
+                            finalRoute.append(route[idx])
+                            batteryConsumption = self.distanceMatrix[stations[-1]-1][route[idx]-1]*self.ENERGY_CONSUMPTION  #Last charging station and the next customer
+                            currentBatteryLvl = batteryLvlAtEachStation[-1] - batteryConsumption
+                            batteryLvlAtEachStation.append(currentBatteryLvl)
+                            forceToInsert = False
+                            idx+=1 # go to nxt station
+                            
+                        else: # no available station
+                            finalRoute.pop()
+                            batteryLvlAtEachStation.pop()
+                            currentBatteryLvl = batteryLvlAtEachStation[-1]
+                            forceToInsert = True
+                            idx-=1
+                else:
+                    finalRoute = route
+                    
+            # print("finish insert: ", finalRoute)
+            completeRoute.append(finalRoute)
+            
+        return completeRoute
+                            
+    
+    """
     def findChargingStation(self,balancedCluster:list):
         '''Choose a random customer-ci and exchange with the customer-cj from 
         different routes that has the shortest distance to the customer ci '''
@@ -74,27 +155,37 @@ class EVRP:
             cluster.insert(0,1)
             cluster.insert(len(cluster),1)
 
-        currentBatteryLevel=self.BATTERY_CAPACITY
-        
         for idx,route in enumerate(balancedCluster):
             #Start from second
+            currentBatteryLevel=self.BATTERY_CAPACITY
+            batteryLevelAtEachStation = [currentBatteryLevel]
             finalRoute=route[0:1]
-            for cust in route[1:]:
+            for i, cust in enumerate(route[1:]):
                 #Check whether battery capacity enough
                 batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
+                
                 if batteryConsumption < currentBatteryLevel:
-                    #Update current battery level
+                    #Can travel - Update current battery level & append to final route
                     currentBatteryLevel-=batteryConsumption
                     finalRoute.append(cust)
-                else:
-                    #if not enough
-                    while(True):
+                    batteryLevelAtEachStation.append(currentBatteryLevel)
+                    
+                else:  #if not enough
+                    
+                    targetCustIdx = i
+                    targetCust = route[1:][targetCustIdx]
+                    
+                    while(True): # go back to previous until find one else just return the route
+                        
                         '''
                         Based on all the available charging stations until customer
                         - Sort charging stations distance with current customer distance (From far to nearest-> reversed)
                         '''
-                        stations=list(reversed(list(self.nearestChargingStations(cust))))
-                        print(stations)
+                        
+                        targetCust = route[1:][targetCustIdx]
+                        print(f"finding charging station btwn {finalRoute[-1]} and {targetCust}")
+                        stations=list(reversed(list(self.nearestChargingStations(targetCust))))
+                        
                         for idx,s in enumerate(stations):
                             batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
                             if batteryConsumption<currentBatteryLevel:
@@ -108,24 +199,34 @@ class EVRP:
                             #Last charging station and the next customer
                             batteryConsumption=self.distanceMatrix[stations[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
                             currentBatteryLevel=self.BATTERY_CAPACITY-batteryConsumption
+                            
+                            # need loop till current cust
                             break
                         else:
-                            pass
-                balancedCluster[idx]=finalRoute    
+                            print("need go back to previous to insert")
+                            finalRoute.pop()   # remove last element and try to insert charging station
+                            batteryLevelAtEachStation.pop()
+                            targetCustIdx-=1
+                            currentBatteryLevel = batteryLevelAtEachStation[-1]
+            
+            balancedCluster[idx]=finalRoute    
         return balancedCluster
-
+    """
+    
+    #Swap last or last 2
     def local2Opt(self,existingRoute:list):
-        '''
-        Step 3:
-        Local search algorithm will rearrange them such that there are no intersecting paths.
-        '''
+        #print('=================================================================')
         existingDistance=self.calculateTotalDistance(existingRoute)
+        #print('Existing distance=',existingDistance)
+        #print('---------------------------------------')
         stop=False
-        #self.plotRoute(existingRoute)
         while(stop==False):
             stop=True
             for i in range(len(existingRoute)):
                 for j in reversed(range(i+1,len(existingRoute))):
+                    #print(f'i is {i}:{existingRoute[i]}; j is {j}:{existingRoute[j]}')
+                    #print(f'Existing route : {existingRoute}')
+                    
                     #Exchange i and j location
                     newRoute=existingRoute.copy()
                     newRoute=self.swap(newRoute,i,j)
@@ -133,16 +234,19 @@ class EVRP:
                     #Find the total distance of newRoute
                     newRouteDistance=self.calculateTotalDistance(newRoute)
                     
+                    #print(f'New route : {newRoute}, new distance : {newRouteDistance}')
+                
                     #If the total distance of existingDistance is better than before then we swap the target
                     if (newRouteDistance < existingDistance):
+                        #print('===SWAP===')
                         #Update currentRoute to newRoute
                         existingRoute=newRoute.copy()
-                        
                         #Update currentDistance to newDistance
                         existingDistance=newRouteDistance
-                        
+                        #print(existingRoute,existingDistance)
                         stop=False
-        #self.plotRoute(existingRoute)
+                    #print('\n---------------------------------------')
+            #print('====================')
         return existingRoute
 
     def balancingApproach(self,initialCluster):
