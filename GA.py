@@ -4,6 +4,8 @@ import random
 import copy
 import itertools
 import time
+import re
+import yaml
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -12,7 +14,7 @@ class GA:
     def __init__(self,POP_SIZE,CROSS_RATE,MUT_RATE,filename,display,random_state=42):
         random.seed(random_state)
         self.evrp=EVRP(filename,display,random_state=random_state)
-        self.MAX_GENERATION=10000#25000*self.evrp.ACTUAL_PROBLEM_SIZE #10
+        self.MAX_GENERATION=1000#25000*self.evrp.ACTUAL_PROBLEM_SIZE #10
         #self.MAX_GENERATION=5
         self.POP_SIZE=POP_SIZE
         self.CROSS_RATE=CROSS_RATE
@@ -119,7 +121,7 @@ class GA:
         #Count probability
         probability=[f/sum(cumulated_normalized_fitness) for f in cumulated_normalized_fitness]
         # return new_population
-        selectedChromosomeIdx = np.random.choice(range(len(ranked_population)),size=self.POP_SIZE,p=probability)
+        selectedChromosomeIdx = np.random.choice(range(len(ranked_population)),size=self.POP_SIZE,p=probability,replace=False)
         return [ranked_population[i][1] for i in selectedChromosomeIdx]
     
     #Before fitness need to check validity -> Battery and capacity, if invalid, return false, no need count fitness (inf)
@@ -157,14 +159,20 @@ class GA:
         return np.sum([self.evrp.calculateTotalDistance(cluster) for cluster in chromosome])
         
     def newGeneration(self):
-        #Store the population's average fitness history
+        #Store the population's average fitness history, key=iter, values=(avg,best_ind)
         history={}
+        
+        #key=incomplete chromosome, value=(complete chromosome, fitness), if check capacity not pass then save as inf
+        chromosome_results={} 
 
         #var to save the best individual fitness value(shortest distance)
         best_individual=(float('inf'),None,None)
 
         #Step 1: Initialiting first population
         self.population=[self.chromosome_init() for _ in range(self.POP_SIZE)]
+
+        #Record start time
+        start_time=time.time()
 
         #Iterate through the max generation
         for iter in range(self.MAX_GENERATION):
@@ -177,17 +185,24 @@ class GA:
             # Step 2: Crossover
             # For every single chromosome then see whether need do crossover
             children=[]
-            for parent1 in self.population:
-                if random.uniform(0,1) <= self.CROSS_RATE:
-                    #Choose another partner for crossover
-                    parent2=random.choice(self.population)
-                    child1,child2=self.crossover(parent1,parent2)
-                    children.append(child1)
-                    children.append(child2)
 
-            #Step 3: Mutation -> Original population and children
+            #list of index 0-199 -> shuffle list, reshape the size become 100*2 -> 100 rows and 2 cols
+            index=list(range(self.POP_SIZE))
+            random.shuffle(index)
+            index=np.reshape(index,(int(self.POP_SIZE/2),2))
+
+            for parent1,parent2 in index:
+                parent1=self.population[parent1]
+                parent2=self.population[parent2]
+                if random.uniform(0,1) <= self.CROSS_RATE:
+                    if parent1!=parent2:      
+                        child1,child2=self.crossover(parent1,parent2)
+                        children.append(child1)
+                        children.append(child2)
+
             self.population=self.population+children
             
+            #Step 3: Mutation -> Original population and children
             for idx,chromosome in enumerate(self.population):
                 #print('Chromosome: ',chromosome)
                 if random.uniform(0,1) <= self.MUT_RATE:
@@ -198,49 +213,76 @@ class GA:
             -> Insert charging stations -> Check validity -> If no valid(inf); else return total distance(include depot+charging stations), 
             but return chromosome (not include depot+charging stations)'''
             ranked_population=[] #stored as tuple (fitness,chromosome(original),chromosome(charging stations+depot))
-            for idx,chromosome in enumerate(self.population):
-                #Check capacity demand and battery level
-                if (self.checkCapacity(chromosome)):
-                    #If capacity true then insert charging stations
-                    chromosomeComplete=self.evrp.findChargingStation(chromosome)
-                    #Check battery
-                    if self.checkBattery(chromosomeComplete):
-                        #Evaluate fitness
-                        chromosome_fitness=self.fitness(chromosomeComplete)
-                        #Append into ranked_pop
-                        ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
             
+            for idx,chromosome in enumerate(self.population):
+                chromosome_tuple=tuple([j for sub in chromosome for j in sub])
+                #Some chromosme might be repeated -> no need evaluate
+                #Check whether this chromosome already did before
+                if chromosome_tuple in chromosome_results.keys():
+                    #Check whether fitness is inf-> Pass append to ranked pop; not pass check battery n capacity then no need put in ranked pop
+                    if chromosome_results[chromosome_tuple][1]!=float('inf'):
+                        ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
+                else:
+                    #Check capacity demand and battery level
+                    if (self.checkCapacity(chromosome)):
+                        #If capacity true then insert charging stations
+                        chromosomeComplete=self.evrp.findChargingStation(chromosome)
+                        #Check battery
+                        if self.checkBattery(chromosomeComplete):
+                            #Evaluate fitness
+                            chromosome_fitness=self.fitness(chromosomeComplete)
+                            #Append into ranked_pop
+                            ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
+                            #Add key-pair values into chromoome_results history
+                            chromosome_results[chromosome_tuple]=(chromosomeComplete,chromosome_fitness)
+                        else:
+                            chromosome_results[chromosome_tuple]=(chromosome,float('inf'))
+                    else:
+                        #Put inside history 
+                        chromosome_results[chromosome_tuple]=(chromosome,float('inf'))
+
             #Sort based on the shortest distance    
             ranked_population.sort(reverse=True)
             self.population=self.rouletteWheelSelection(ranked_population)
           
             #Compare the current population's best individual with the current best individual
-            if(ranked_population[0][0] < best_individual[0]):
-                best_individual=ranked_population[0]
+            if(ranked_population[-1][0] < best_individual[0]):
+                best_individual=copy.deepcopy(ranked_population[-1])
 
             #Update history
-            print(f'Iter: {iter}, Best Individual: {best_individual[0]}')
-            history[iter]={'Avg':np.mean([ind[0] for ind in ranked_population]),'Best Individual':best_individual}
+            print(f'Iter: {iter+1}, Best Individual: {best_individual[0]}')
+            history[iter+1]={'Avg':str(np.mean([ind[0] for ind in ranked_population])),'Best Individual':str(best_individual)}
         
-        return best_individual,history
+        #Record end time, run time-start time
+        run_time=time.time()-start_time
+
+        return run_time,best_individual,history
 
 if __name__=='__main__':
     POP_SIZE=200 #POP_SIZE=200
     CROSS_RATE=0.95
     MUT_RATE=0.1
     #POP_SIZE,CROSS_RATE,MUT_RATE,filename,display,random_state=42):
-    filename='evrp-benchmark-set/E-n22-k4.evrp'
-    start=time.time()
-    ga=GA(POP_SIZE,CROSS_RATE,MUT_RATE,filename,display=False,random_state=42)
-    best_individual,history=ga.newGeneration()
-    end=time.time()
-    
-    print(f'>> Solution time   :{end-start:.2f}')
-    print(history)
-    
-    with open('history_k14.txt','w') as f:
-        f.write(f'Filename     : {filename}\n')
-        f.write(f'Solution time: {end-start:.2f}\n')
-        for i in range(len(history)-1):
-            f.write('Iter '+str(i)+' '+str(history[i])+'\n')
-        
+    filename=['evrp-benchmark-set/E-n22-k4.evrp']
+
+    for idx,file in enumerate(filename):
+        ga=GA(POP_SIZE,CROSS_RATE,MUT_RATE,file,display=False,random_state=42)
+        run_time,best_individual,history=ga.newGeneration()
+        print(f'>> Running Time        :{run_time:.2f}')
+        print(f'>> Approximation Ratio :{best_individual/ga.evrp.OPTIMUM}')
+
+        results={}
+        results['File Name']=file
+        results['Running Time']=run_time
+        results['Best Chromosome']=best_individual
+        results['Approximation Ratio']=best_individual/ga.evrp.OPTIMUM
+
+        #Save generation history into file
+        file=file.strip('.evrp')
+        benchmark_name=re.match(r'-(\w.*)/(\w.*)',file)
+        save_filename='history_'+benchmark_name.group(1)+benchmark_name.group(2)+'.yml'
+        with open(save_filename,'w') as f:
+            yaml.dump(history,f)
+            yaml.dump(results,f)
+          
+  

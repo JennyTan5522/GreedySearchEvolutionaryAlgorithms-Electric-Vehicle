@@ -141,82 +141,10 @@ class EVRP:
             # print("finish insert: ", finalRoute)
             completeRoute.append(finalRoute)
         return completeRoute
-                            
-    
-    """
-    def findChargingStation(self,balancedCluster:list):
-        '''Choose a random customer-ci and exchange with the customer-cj from 
-        different routes that has the shortest distance to the customer ci '''
-
-        #Add depot(NODE=1) infront and behind of every cluster
-        for cluster in balancedCluster:
-            cluster.insert(0,1)
-            cluster.insert(len(cluster),1)
-
-        for idx,route in enumerate(balancedCluster):
-            #Start from second
-            currentBatteryLevel=self.BATTERY_CAPACITY
-            batteryLevelAtEachStation = [currentBatteryLevel]
-            finalRoute=route[0:1]
-            for i, cust in enumerate(route[1:]):
-                #Check whether battery capacity enough
-                batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
-                
-                if batteryConsumption < currentBatteryLevel:
-                    #Can travel - Update current battery level & append to final route
-                    currentBatteryLevel-=batteryConsumption
-                    finalRoute.append(cust)
-                    batteryLevelAtEachStation.append(currentBatteryLevel)
-                    
-                else:  #if not enough
-                    
-                    targetCustIdx = i
-                    targetCust = route[1:][targetCustIdx]
-                    
-                    while(True): # go back to previous until find one else just return the route
-                        
-                        '''
-                        Based on all the available charging stations until customer
-                        - Sort charging stations distance with current customer distance (From far to nearest-> reversed)
-                        '''
-                        
-                        targetCust = route[1:][targetCustIdx]
-                        print(f"finding charging station btwn {finalRoute[-1]} and {targetCust}")
-                        stations=list(reversed(list(self.nearestChargingStations(targetCust))))
-                        
-                        for idx,s in enumerate(stations):
-                            batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
-                            if batteryConsumption<currentBatteryLevel:
-                                stations=stations[idx:]
-                                break
-                        else:
-                            stations=[]
-                            
-                        if len(stations)>0:
-                            finalRoute=finalRoute+stations+[cust]
-                            #Last charging station and the next customer
-                            batteryConsumption=self.distanceMatrix[stations[-1]-1][cust-1]*self.ENERGY_CONSUMPTION
-                            currentBatteryLevel=self.BATTERY_CAPACITY-batteryConsumption
-                            
-                            # need loop till current cust
-                            break
-                        else:
-                            print("need go back to previous to insert")
-                            finalRoute.pop()   # remove last element and try to insert charging station
-                            batteryLevelAtEachStation.pop()
-                            targetCustIdx-=1
-                            currentBatteryLevel = batteryLevelAtEachStation[-1]
-            
-            balancedCluster[idx]=finalRoute    
-        return balancedCluster
-    """
     
     #Swap last or last 2
     def local2Opt(self,existingRoute:list):
-        #print('=================================================================')
         existingDistance=self.calculateTotalDistance(existingRoute)
-        #print('Existing distance=',existingDistance)
-        #print('---------------------------------------')
         stop=False
         while(stop==False):
             stop=True
@@ -269,6 +197,7 @@ class EVRP:
         #Loop all nearest customers from A
         currentLastRouteDemand=self.totalDemandInRoute(lastRoute)
         for cust in nearestA:
+            #TODO if a and b codition tgt, else straight break the loop
             '''
             (3a) Initial sum of the total capacity of the route and the capacity of the chosen the EV's 
                 maximal carrying capacity Pmax customers does not exceed. 
@@ -351,7 +280,7 @@ class EVRP:
                 #Add currentCluster to finalCluster
                 finalCluster.append(currentCluster)
 
-                #Create a new cluster based on new seedPoint
+                #Create a new cluster based on new seedPoint #TODO put one while loop 
                 while(True):
                     seedPoint=random.randint(2,self.NUM_OF_CUSTOMERS+1)
                         
