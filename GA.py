@@ -14,7 +14,7 @@ class GA:
     def __init__(self,POP_SIZE,CROSS_RATE,MUT_RATE,filename,display,random_state=42):
         random.seed(random_state)
         self.evrp=EVRP(filename,display,random_state=random_state)
-        self.MAX_GENERATION=1000#25000*self.evrp.ACTUAL_PROBLEM_SIZE #10
+        self.MAX_GENERATION=100#25000*self.evrp.ACTUAL_PROBLEM_SIZE #10
         #self.MAX_GENERATION=5
         self.POP_SIZE=POP_SIZE
         self.CROSS_RATE=CROSS_RATE
@@ -156,7 +156,7 @@ class GA:
         '''
         Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n
         '''
-        return np.sum([self.evrp.calculateTotalDistance(cluster) for cluster in chromosome])
+        return np.sum([self.evrp.calculateTotalDistance(route) for route in chromosome])
         
     def newGeneration(self):
         #Store the population's average fitness history, key=iter, values=(avg,best_ind)
@@ -174,6 +174,9 @@ class GA:
         #Record start time
         start_time=time.time()
 
+        #Record cumulated fitness
+        cumulated_fitness=0
+
         #Iterate through the max generation
         for iter in range(self.MAX_GENERATION):
             if (iter>0):
@@ -181,7 +184,7 @@ class GA:
                 for j,solution in enumerate(self.population):
                     for k,cluster in enumerate(solution):
                         self.population[j][k]=self.evrp.local2Opt(self.population[j][k])
-  
+
             # Step 2: Crossover
             # For every single chromosome then see whether need do crossover
             children=[]
@@ -278,11 +281,11 @@ if __name__=='__main__':
         results['Approximation Ratio']=best_individual/ga.evrp.OPTIMUM
 
         #Save generation history into file
-        file=file.strip('.evrp')
-        benchmark_name=re.match(r'-(\w.*)/(\w.*)',file)
-        save_filename='history_'+benchmark_name.group(1)+benchmark_name.group(2)+'.yml'
-        with open(save_filename,'w') as f:
-            yaml.dump(history,f)
-            yaml.dump(results,f)
+        # file=file.strip('.evrp')
+        # benchmark_name=re.match(r'-(\w.*)/(\w.*)',file)
+        # save_filename='history_'+benchmark_name.group(1)+benchmark_name.group(2)+'.yml'
+        # with open(save_filename,'w') as f:
+        #     yaml.dump(history,f)
+        #     yaml.dump(results,f)
           
   
