@@ -66,103 +66,100 @@ class EVRP:
         sortCustIdxMatrix=np.argsort(self.distanceMatrix[customer-1][self.NUM_OF_CUSTOMERS+1:]) 
         return np.array(list(range(self.NUM_OF_CUSTOMERS+1,self.ACTUAL_PROBLEM_SIZE+1)))[sortCustIdxMatrix] 
 
-    def findChargingStation(self, balancedCluster:list):
+    def findChargingStation(self, orginalSubroute:list):
         '''
         If the vehicle cannot find such a set of charging stations, it will go back to find a station from customer ci-1 to ci 
         and repeat until it can find a satisfactory station or back to depot.
         '''
         #Complete route include depot + customers + charging stations
-        completeRoute = []
-        balancedClusterComplete = copy.deepcopy(balancedCluster)
+        subroute=copy.deepcopy(orginalSubroute)
+        #Add depot to front and end,depot location=1
+        subroute.insert(0,1)
+        subroute.insert(len(subroute),1)
         
-        for route in balancedClusterComplete:
-            #Add depot to front and end,depot location=1
-            route.insert(0,1)
-            route.insert(len(route),1)
+        #Index to keep track each customer in the current route
+        idx = 0
+        #Current route that include depot+customer
+        finalRoute = []
+        #A list of battery level at each station to keep track the consumption rate
+        batteryLvlAtEachStation = []
+        forceToInsert = False
+        
+        #Loop through each customer to check whether there is enough battery level to move from customer ci to ci+1
+        while (idx<len(subroute)):
             
-            #Index to keep track each customer in the current route
-            idx = 0
-            #Current route that include depot+customer
-            finalRoute = []
-            #A list of battery level at each station to keep track the consumption rate
-            batteryLvlAtEachStation = []
-            forceToInsert = False
-            
-            #Loop through each customer to check whether there is enough battery level to move from customer ci to ci+1
-            while (idx<len(route)):
-                #Idx==0 means that it is starts from the first customer, then the currentBatteryLevel is full
-                if idx == 0:  
-                    currentBatteryLvl = self.BATTERY_CAPACITY
+            if(idx<0):
+                return -1
+            #Idx==0 means that it is starts from the first customer, then the currentBatteryLevel is full
+            if idx == 0:  
+                currentBatteryLvl = self.BATTERY_CAPACITY
+                #Update finalRoute and batteryLvlAtEachStation
+                finalRoute.append(subroute[idx])
+                batteryLvlAtEachStation.append(currentBatteryLvl)
+                #Move to next customer
+                idx+=1 
+            #From second customer check whether currentBatteryLvl can support battery consumption from ci to ci+1 
+            elif (idx >= 0):
+                #Calc battery consumption from prev to curr station
+                batteryConsumption = self.distanceMatrix[finalRoute[-1]-1][subroute[idx]-1]*self.ENERGY_CONSUMPTION
+                
+                #If current battery level is lower than battery consumption then it means that it have the enuf energy to move to next customer
+                if (batteryConsumption < currentBatteryLvl) and (not forceToInsert):
+                    #Deduct current battery level
+                    currentBatteryLvl = batteryLvlAtEachStation[-1] - batteryConsumption
                     #Update finalRoute and batteryLvlAtEachStation
-                    finalRoute.append(route[idx])
+                    finalRoute.append(subroute[idx])
                     batteryLvlAtEachStation.append(currentBatteryLvl)
                     #Move to next customer
                     idx+=1 
-                #From second customer check whether currentBatteryLvl can support battery consumption from ci to ci+1 
-                elif (idx >= 0):
-                    #Calc battery consumption from prev to curr station
-                    batteryConsumption = self.distanceMatrix[finalRoute[-1]-1][route[idx]-1]*self.ENERGY_CONSUMPTION
+                #If not enough battery to move from ci to ci+1    
+                else:   
+                    #Find available charging stations from far to nearest 
+                    stations=list(reversed(list(self.nearestChargingStations(subroute[idx]))))
                     
-                    #If current battery level is lower than battery consumption then it means that it have the enuf energy to move to next customer
-                    if (batteryConsumption < currentBatteryLvl) and (not forceToInsert):
-                        #Deduct current battery level
+                    #Loop through each station
+                    for i, s in enumerate(stations):
+                        #Find battery consumption from customer ci-1 to ci
+                        batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
+                        #Find a set of charging stations that are enough to support currentBatteryLvl
+                        if batteryConsumption < currentBatteryLvl:
+                            stations=stations[i:]
+                            break
+                    #No available stations found to suport currentBatteryLvl
+                    else:  
+                        stations = []
+                    
+                    #List of stations found to support currentBatteryLvl
+                    if len(stations) > 0:  
+                        #Update list of charging stations to finalRoute
+                        finalRoute=finalRoute+stations
+                        #Update battery capacity based on the available charging stations
+                        for _ in range(len(stations)):
+                            batteryLvlAtEachStation.append(self.BATTERY_CAPACITY)
+                        
+                        #Update current customer to finalRoute
+                        finalRoute.append(subroute[idx])
+                        #Find the batteryConsumption of LastChargingStation and the next customer
+                        batteryConsumption = self.distanceMatrix[stations[-1]-1][subroute[idx]-1]*self.ENERGY_CONSUMPTION  
+                        #Deduct battery level
                         currentBatteryLvl = batteryLvlAtEachStation[-1] - batteryConsumption
-                        #Update finalRoute and batteryLvlAtEachStation
-                        finalRoute.append(route[idx])
+                        #Update currentBatterLvl to batteryLvlEachStation
                         batteryLvlAtEachStation.append(currentBatteryLvl)
-                        #Move to next customer
+                        forceToInsert = False
+                        #Move to next station
                         idx+=1 
-                    #If not enough battery to move from ci to ci+1    
-                    else:   
-                        #Find available charging stations from far to nearest 
-                        stations=list(reversed(list(self.nearestChargingStations(route[idx]))))
-                        
-                        #Loop through each station
-                        for i, s in enumerate(stations):
-                            #Find battery consumption from customer ci-1 to ci
-                            batteryConsumption=self.distanceMatrix[finalRoute[-1]-1][s-1]*self.ENERGY_CONSUMPTION
-                            #Find a set of charging stations that are enough to support currentBatteryLvl
-                            if batteryConsumption < currentBatteryLvl:
-                                stations=stations[i:]
-                                break
-                        #No available stations found to suport currentBatteryLvl
-                        else:  
-                            stations = []
-                        
-                        #List of stations found to support currentBatteryLvl
-                        if len(stations) > 0:  
-                            #Update list of charging stations to finalRoute
-                            finalRoute=finalRoute+stations
-                            #Update battery capacity based on the available charging stations
-                            for _ in range(len(stations)):
-                                batteryLvlAtEachStation.append(self.BATTERY_CAPACITY)
-                            
-                            #Update current customer to finalRoute
-                            finalRoute.append(route[idx])
-                            #Find the batteryConsumption of LastChargingStation and the next customer
-                            batteryConsumption = self.distanceMatrix[stations[-1]-1][route[idx]-1]*self.ENERGY_CONSUMPTION  
-                            #Deduct battery level
-                            currentBatteryLvl = batteryLvlAtEachStation[-1] - batteryConsumption
-                            #Update currentBatterLvl to batteryLvlEachStation
-                            batteryLvlAtEachStation.append(currentBatteryLvl)
-                            forceToInsert = False
-                            #Move to next station
-                            idx+=1 
 
-                        #No available stations found
-                        else: 
-                            finalRoute.pop()
-                            batteryLvlAtEachStation.pop()
-                            currentBatteryLvl = batteryLvlAtEachStation[-1]
-                            forceToInsert = True
-                            idx-=1
-                else:
-                    finalRoute = route
-                    
-            # print("finish insert: ", finalRoute)
-            #Append finalRoute to complete Route
-            completeRoute.append(finalRoute)
-        return completeRoute
+                    #No available stations found
+                    else: 
+                        finalRoute.pop()
+                        batteryLvlAtEachStation.pop()
+                        currentBatteryLvl = batteryLvlAtEachStation[-1]
+                        forceToInsert = True
+                        idx-=1
+            else:
+                finalRoute = subroute
+                
+        return finalRoute
     
     #Swap last or last 2
     def local2Opt(self,existingRoute:list):

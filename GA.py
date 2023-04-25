@@ -125,38 +125,36 @@ class GA:
         return [ranked_population[i][1] for i in selectedChromosomeIdx]
     
     #Before fitness need to check validity -> Battery and capacity, if invalid, return false, no need count fitness (inf)
-    def checkCapacity(self,chromosome:list):#Chromosome already include charging stations
+    def checkCapacity(self,subroute:list):#Chromosome already include charging stations
         #Chromosome not include depot+charging stations
-        for route in chromosome:
-            if self.evrp.totalDemandInRoute(route)>self.evrp.MAX_CAPACITY:
-                return False
+        if self.evrp.totalDemandInRoute(subroute)>self.evrp.MAX_CAPACITY:
+            return False
         return True
 
-    def checkBattery(self,chromosome:list):
+    def checkBattery(self,subroute:list):
         '''
         [1,2,3,5,25,2,1], when 1(idx=0) full capacity -> Battery consumption=0
         2 is not charging stations
         '''
-        #ChromosomeComplete include depot+charging stations
-        for route in chromosome:
-            #Loop for every stations
-            currentBatteryLevel=self.evrp.BATTERY_CAPACITY
-            for idx in range(1,len(route)-1):
-                #Cal batter consumption (Current and previous energy consumption)
-                batteryConsumption=self.evrp.distanceMatrix[route[idx]-1][route[idx-1]-1]*self.evrp.ENERGY_CONSUMPTION
-                currentBatteryLevel-=batteryConsumption
-                if (currentBatteryLevel < 0):
-                    return False
-                #Check whether current node if charging station
-                if route[idx] in self.evrp.STATIONS_COORD_SECTION:
-                    currentBatteryLevel=self.evrp.BATTERY_CAPACITY
+        #Loop for every stations
+        currentBatteryLevel=self.evrp.BATTERY_CAPACITY
+        for idx in range(1,len(subroute)-1):
+            #Cal batter consumption (Current and previous energy consumption)
+            batteryConsumption=self.evrp.distanceMatrix[subroute[idx]-1][subroute[idx-1]-1]*self.evrp.ENERGY_CONSUMPTION
+            currentBatteryLevel-=batteryConsumption
+            if (currentBatteryLevel < 0):
+                return False
+            #Check whether current node if charging station
+            if subroute[idx] in self.evrp.STATIONS_COORD_SECTION:
+                currentBatteryLevel=self.evrp.BATTERY_CAPACITY
         return True #Valid route
 
-    def fitness(self,chromosome:list):
+    def fitness(self,subroute:list):
         '''
         Calculate the chromosome fitness(depot+charging+cust) based on distance[i],distance[i+1] .. to n
         '''
-        return np.sum([self.evrp.calculateTotalDistance(route) for route in chromosome])
+        return self.evrp.calculateTotalDistance(subroute)
+        #return np.sum([self.evrp.calculateTotalDistance(route) for route in chromosome])
         
     def newGeneration(self):
         #Store the population's average fitness history, key=iter, values=(avg,best_ind)
@@ -170,13 +168,14 @@ class GA:
 
         #Step 1: Initialiting first population
         self.population=[self.chromosome_init() for _ in range(self.POP_SIZE)]
+        print('Initialize pop')
 
         #Record start time
         start_time=time.time()
 
         #Record cumulated fitness
         cumulated_fitness=0
-
+        print('Max gen')
         #Iterate through the max generation
         for iter in range(self.MAX_GENERATION):
             if (iter>0):
@@ -202,7 +201,7 @@ class GA:
                         child1,child2=self.crossover(parent1,parent2)
                         children.append(child1)
                         children.append(child2)
-
+            
             self.population=self.population+children
             
             #Step 3: Mutation -> Original population and children
@@ -217,33 +216,60 @@ class GA:
             but return chromosome (not include depot+charging stations)'''
             ranked_population=[] #stored as tuple (fitness,chromosome(original),chromosome(charging stations+depot))
             
+            #key=incomplete chromosome, value=(complete chromosome, fitness), if check capacity not pass then save as inf
             for idx,chromosome in enumerate(self.population):
-                chromosome_tuple=tuple([j for sub in chromosome for j in sub])
-                #Some chromosme might be repeated -> no need evaluate
-                #Check whether this chromosome already did before
-                if chromosome_tuple in chromosome_results.keys():
-                    #Check whether fitness is inf-> Pass append to ranked pop; not pass check battery n capacity then no need put in ranked pop
-                    if chromosome_results[chromosome_tuple][1]!=float('inf'):
-                        ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
-                else:
-                    #Check capacity demand and battery level
-                    if (self.checkCapacity(chromosome)):
-                        #If capacity true then insert charging stations
-                        chromosomeComplete=self.evrp.findChargingStation(chromosome)
-                        #Check battery
-                        if self.checkBattery(chromosomeComplete):
-                            #Evaluate fitness
-                            chromosome_fitness=self.fitness(chromosomeComplete)
-                            #Append into ranked_pop
-                            ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
-                            #Add key-pair values into chromoome_results history
-                            chromosome_results[chromosome_tuple]=(chromosomeComplete,chromosome_fitness)
+                currentFitness=0
+                currentChromosome=[]
+                addIntoPopulation=True
+                print(chromosome)
+                for subroute in chromosome:
+                    #Some chromosme might be repeated -> no need evaluate
+                    #Check whether this chromosome already did before
+                    if str(subroute) in chromosome_results.keys():
+                        #Check whether fitness is inf-> Pass append to ranked pop; not pass check battery n capacity then no need put in ranked pop
+                        if chromosome_results[str(subroute)][1]!=float('inf'):
+                            currentFitness+=chromosome_results[str(subroute)][1]
+                            currentChromosome.append(chromosome_results[str(subroute)][0])
+                            #ranked_population.append((chromosome_fitness,chromosome,chromosomeComplete))
                         else:
-                            chromosome_results[chromosome_tuple]=(chromosome,float('inf'))
-                    else:
-                        #Put inside history 
-                        chromosome_results[chromosome_tuple]=(chromosome,float('inf'))
+                            addIntoPopulation=False
+                            break #Got one subroute exceed capacity, no need append 
+                    else:#subroute
+                        #Check capacity demand and battery level
+                        if (self.checkCapacity(subroute)):
+                            print('find charging stations')
+                            #If capacity true then insert charging stations
+                            subrouteComplete=self.evrp.findChargingStation(subroute)
+                            if(subrouteComplete!=-1):
+                                print('complete finding charging stations')
+                                #Check battery
+                                if self.checkBattery(subrouteComplete):
+                                    #Evaluate fitness
+                                    subroute_fitness=self.fitness(subrouteComplete)
+                                    currentFitness+=subroute_fitness
+                                    currentChromosome.append(subrouteComplete)
+                                    #Append into ranked_pop
+                                    #ranked_population.append((chromosome_fitness,chromosome,subrouteComplete))
+                                    #Add key-pair values into chromoome_results history
+                                    chromosome_results[str(subroute)]=(subrouteComplete,subroute_fitness)
+                                else:
+                                    chromosome_results[str(subroute)]=(subroute,float('inf'))
+                                    addIntoPopulation=False
+                                    break
+                            else:
+                                chromosome_results[str(subroute)]=(subroute,float('inf'))
+                                addIntoPopulation=False
+                                break
+                        else:
+                            #Put inside history 
+                            chromosome_results[str(subroute)]=(subroute,float('inf'))
+                            addIntoPopulation=False
+                            break
+                
 
+                if addIntoPopulation:
+                    ranked_population.append((currentFitness,chromosome,currentChromosome))
+            
             #Sort based on the shortest distance    
             ranked_population.sort(reverse=True)
             self.population=self.rouletteWheelSelection(ranked_population)
