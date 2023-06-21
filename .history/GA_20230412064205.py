@@ -1,3 +1,0 @@
-import EVRP
-class GA:
-    
